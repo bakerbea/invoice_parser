@@ -10,10 +10,20 @@ from zipfile import ZipFile
 # Define output directory for saving generated files
 OUTPUT_DIR = 'orders_output'
 ZIP_FILE = 'orders_output.zip'
+
+# Clear out the existing `orders_output` folder before generating new files
+if os.path.exists(OUTPUT_DIR):
+    shutil.rmtree(OUTPUT_DIR)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Streamlit interface title
 st.title("Order Processing App")
+
+# Dropdown for selecting file type
+file_type = st.selectbox(
+    "Select the type of file you are uploading:",
+    ["Lazada", "Zalora", "Shopee", "TikTok", "JDO"]
+)
 
 # File uploader widget
 uploaded_file = st.file_uploader("Upload an Excel file", type="xlsx")
@@ -21,19 +31,96 @@ uploaded_file = st.file_uploader("Upload an Excel file", type="xlsx")
 if uploaded_file is not None:
     # Load the uploaded Excel file
     df = pd.read_excel(uploaded_file)
+    columns = {}
+    # Case-based functionality based on the selected file type
+    if file_type == "Lazada":
+        # Lazada column mapping
+        columns = {
+            'customer_name': 'customerName',
+            'province': 'shippingCountry',
+            'styleclrsize': 'sellerSku',
+            'unit_price': 'paidPrice',
+            'qty': None,  # No quantity column for Lazada
+            'order_date': 'createTime',
+            'order_id': 'orderNumber',
+            'style_name': 'itemName'
+        }
+        st.write("Processing Lazada file...")
+        # Adjust columns or logic for Lazada orders here
 
-    # Extract the relevant columns
-    df_filtered = df[['CUSTOMER NAME', 'PROVINCE', 'STYLECLRSIZE', 'UNIT PRICE', 'QTY', 'ORDER DATE']]
+    elif file_type == "Shopee":
+        # Shopee column mapping
+        columns = {
+            'customer_name': 'Name',
+            'province': 'City',
+            'styleclrsize': 'SKU Reference No.',
+            'unit_price': 'Deal Price',
+            'qty': 'Quantity',
+            'order_date': 'Order Creation Date',
+            'order_id': 'Order ID',
+            'style_name': 'Product Name'
+        }
+        st.write("Processing Shopee file...")
+        # Adjust columns or logic for Shopee orders here
+
+    elif file_type == "Zalora":
+        # Zalora column mapping
+        columns = {
+            'customer_name': 'Customer Name',
+            'province': 'Shipping City',
+            'styleclrsize': 'Seller SKU',
+            'unit_price': 'Paid Price',
+            'qty': None,  # No quantity column for Zalora
+            'order_date': 'Created at',
+            'order_id': 'Order Number',
+            'style_name': 'Item Name'
+        }
+        st.write("Processing Zalora file...")
+        # Adjust columns or logic for Zalora orders here
+
+    elif file_type == "TikTok":
+        # TikTok column mapping
+        columns = {
+            'customer_name': 'Buyer Username',
+            'province': 'Province',
+            'styleclrsize': 'Seller SKU',
+            'unit_price': 'SKU Subtotal After Discount',
+            'qty': 'Quantity',
+            'order_date': 'Created Time',
+            'order_id': 'Order ID',
+            'style_name': 'Product Name'
+        }
+        st.write("Processing TikTok file...")
+        # Adjust columns or logic for TikTok orders here
+
+    elif file_type == "JDO":
+        # JDO column mapping
+        columns = {
+            'customer_name': 'CUSTOMER NAME',
+            'province': 'PROVINCE',
+            'styleclrsize': 'STYLECLRSIZE',
+            'unit_price': 'UNIT PRICE',
+            'qty': 'QTY',
+            'order_date': 'ORDER DATE',
+            'order_id': None,  # No order ID column for JDO
+            'style_name': None  # No style name column for JDO
+        }
+        st.write("Processing JDO file...")
+        # Adjust columns or logic for JDO orders here
+
+
+    # Extract the relevant columns based on file type
+    df_filtered = df[[value for value in columns.values() if value is not None]]
 
     # Group the orders by 'CUSTOMER NAME' and 'ORDER DATE'
-    grouped_orders = df_filtered.groupby(['CUSTOMER NAME', 'ORDER DATE'])
+    grouped_orders = df_filtered.groupby([columns['customer_name'], columns['order_date']])
 
     # Helper function to sanitize file names
     def sanitize_filename(filename):
         return filename.replace(':', '-').replace('/', '-').replace('\\', '-')
 
     # Function to write order information into the template
-    def write_order_to_template(customer_name, province, order_data, output_file, start_item=0, end_item=None):
+    def write_order_to_template(customer_name, province, order_id, order_data, output_file, start_item=0, end_item=None):
         # Create a new workbook
         wb = Workbook()
         ws = wb.active
@@ -62,9 +149,11 @@ if uploaded_file is not None:
         ws['D11'] = province
         ws['K11'] = datetime.now().strftime("%B %d, %Y")
 
-        # Cell merge for order number and platform name
+        # Cell merge and write for order number and platform name
         ws.merge_cells('I13:J13')
+        ws['I13'] = str(order_id)
         ws.merge_cells('E14:F14')
+        ws['E14'] = file_type
 
         # Starting row for styles
         start_row = 17
@@ -77,15 +166,19 @@ if uploaded_file is not None:
 
         # Loop through each row in the order data to populate styles
         for index, row in order_data.iloc[start_item:end_item].iterrows():
-            style_total = row['QTY'] * row['UNIT PRICE']
+            qty = int(row[columns['qty']]) if columns['qty'] is not None else 1
+            
+            style_total = qty * float(row[columns['unit_price']]) if file_type != 'TikTok' \
+                else qty * float(row[columns['unit_price']].replace("PHP", "").replace(',', '').strip())
             total_value += style_total
-            p_count += row['QTY']
+            p_count += qty
 
             ws.merge_cells(f'C{start_row}:D{start_row}')
-            ws[f'C{start_row}'] = row['STYLECLRSIZE']
-            ws[f'I{start_row}'] = row['QTY']
-            ws[f'J{start_row}'] = row['UNIT PRICE']
-            ws[f'K{start_row}'] = style_total
+            ws[f'C{start_row}'] = row[columns['styleclrsize']]
+            ws[f'F{start_row}'] = row[columns['style_name']] if columns['style_name'] is not None else ''
+            ws[f'I{start_row}'] = qty
+            ws[f'J{start_row}'] = row[columns['unit_price']]
+            ws[f'K{start_row}'] = str(style_total)
 
             start_row += 1
 
@@ -100,11 +193,11 @@ if uploaded_file is not None:
     
         # Write totals
         start_row += 1
-        ws[f'H{start_row}'] = total_value / 1.12
+        ws[f'H{start_row}'] = round(total_value / 1.12, 2)
         start_row += 4
         ws[f'H{start_row}'] = total_value
         start_row += 1
-        ws[f'H{start_row}'] = total_value * 0.12
+        ws[f'H{start_row}'] = total_value - round(total_value / 1.12, 2)
         start_row += 4
         ws[f'I{start_row}'] = p_count
         ws[f'J{start_row}'] = 'P'
@@ -121,11 +214,12 @@ if uploaded_file is not None:
 
     # Save each order to a separate Excel file
     for (customer, date), group in grouped_orders:
-        customer_name = group['CUSTOMER NAME'].iloc[0]
-        province = group['PROVINCE'].iloc[0]
+        customer_name = group[columns['customer_name']].iloc[0]
+        province = group[columns['province']].iloc[0]
+        order_id = group[columns['order_id']].iloc[0] if columns['order_id'] is not None else ''
 
         # Sanitize the filename
-        date_str = str(date).replace(':', '-').replace(' ', '_')
+        date_str = str(date).replace(':', '-').replace(' ', '_').replace('/','-')
         customer_str = sanitize_filename(customer_name)
 
         num_items = len(group)
@@ -135,7 +229,7 @@ if uploaded_file is not None:
             end_item = min(start_item + batch_size, num_items)
             file_name = f"{customer_str}_{date_str}_batch{batch_number}.xlsx"
             output_file = os.path.join(OUTPUT_DIR, file_name)
-            write_order_to_template(customer_name, province, group, output_file, start_item, end_item)
+            write_order_to_template(customer_name, province, order_id, group, output_file, start_item, end_item)
             batch_number += 1
 
     # Zip all files in the output directory
@@ -147,4 +241,3 @@ if uploaded_file is not None:
     # Provide a download link for the zip file
     with open(ZIP_FILE, 'rb') as f:
         st.download_button(label="Download All Orders (ZIP)", data=f, file_name="orders_output.zip")
-
