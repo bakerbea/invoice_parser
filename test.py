@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 from openpyxl import Workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Alignment
 from datetime import datetime
 import shutil
 from zipfile import ZipFile
@@ -102,18 +102,13 @@ if uploaded_file is not None:
         ws = wb.active
 
         ws.page_setup.orientation = 'portrait'
-        ws.page_setup.scale = 99
         ws.print_area = 'B1:K40'
-        ws.page_margins.top = 0.0
+        ws.page_margins.top = 0.75
         ws.page_margins.bottom = 0.74
         ws.page_margins.left = 0.0787
         ws.page_margins.right = 0.118
         ws.page_margins.header = 0.315
         ws.page_margins.footer = 0.315
-
-        for row in ws.iter_rows():
-            for cell in row:
-                cell.font = Font(name='Calibri', size=10)
 
         # Define column widths 
         column_widths = {
@@ -121,13 +116,13 @@ if uploaded_file is not None:
             'B': 4.326,     
             'C': 5.253,     
             'D': 11.433,    
-            'E': 4.635,     
-            'F': 11.2785,   
+            'E': 7.635,     
+            'F': 13.2785,   
             'G': 7.416,     
             'H': 16.995,    
-            'I': 7.416,     
-            'J': 11.433,    
-            'K': 13.978 
+            'I': 6.316,     
+            'J': 9.833,    
+            'K': 12.578 
         }
 
         for col, width in column_widths.items():
@@ -137,22 +132,30 @@ if uploaded_file is not None:
                        7: 11.45, 8: 13.5, 9: 15.0, 10: 4.5, 11: 12.0, 12: 17.25,
                        13: 21.75, 16: 12.75, 17: 11.25, 18: 11.25, 19: 11.25,
                        20: 11.25, 21: 11.25, 22: 11.25, 23: 11.25, 24: 11.25,
-                       25: 11.25, 26: 11.25, 27: 9.0, 28: 11.5, 29: 9.5, 30: 10.5,
-                       31: 10.5, 32: 11.5, 33: 11.5, 34: 8.5, 35: 9.75, 36: 7.5,
+                       25: 11.25, 26: 11.25, 27: 9.0, 28: 11.5, 29: 9.5, 30: 12.5,
+                       31: 10.5, 32: 11.5, 33: 11.5, 34: 11.0, 35: 11.75, 36: 7.5,
                        37: 12.0, 38: 15.0, 39: 18.75, 40: 30.0}
 
         for row, height in row_heights.items():
             ws.row_dimensions[row].height = height
+
+        # Enable fit to page by setting the fitToWidth and fitToHeight properties
+        ws.page_setup.fitToWidth = 1   # Fit to 1 page wide
+        ws.page_setup.fitToHeight = 1  # Fit to 1 page tall
+
+        # Optionally, set scale to None to let fitToWidth/fitToHeight take effect
+        ws.page_setup.scale = None
 
         ws['D9'] = customer_name
         ws['D11'] = province
         ws['K11'] = datetime.now().strftime("%B %d, %Y")
         ws.merge_cells('I13:J13')
         ws['I13'] = str(order_id)
+        ws['I13'].alignment = Alignment(horizontal='center')
         ws.merge_cells('E14:F14')
         ws['E14'] = file_type
 
-        start_row = 17
+        start_row = 18
         total_value = 0
         p_count = 0
 
@@ -171,7 +174,9 @@ if uploaded_file is not None:
             ws[f'F{start_row}'] = row[columns['style_name']] if columns['style_name'] is not None else ''
             ws[f'I{start_row}'] = qty
             ws[f'J{start_row}'] = row[columns['unit_price']]
+            ws[f'J{start_row}'].alignment = Alignment(horizontal='center')
             ws[f'K{start_row}'] = str(style_total)
+            ws[f'K{start_row}'].alignment = Alignment(horizontal='right')
 
             start_row += 1
 
@@ -180,9 +185,10 @@ if uploaded_file is not None:
 
         for i in range(num_dashes):
             ws[f'J{start_row}'] = '-'
+            ws[f'J{start_row}'].alignment = Alignment(horizontal='center')
             start_row += 1
 
-        start_row += 1
+        start_row += 2
         ws[f'H{start_row}'] = round(total_value / 1.12, 2)
         start_row += 4
         ws[f'H{start_row}'] = total_value
@@ -191,7 +197,13 @@ if uploaded_file is not None:
         start_row += 4
         ws[f'I{start_row}'] = p_count
         ws[f'J{start_row}'] = 'P'
+        ws[f'J{start_row}'].alignment = Alignment(horizontal='right')
         ws[f'K{start_row}'] = total_value
+        ws[f'K{start_row}'].alignment = Alignment(horizontal='right')
+
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.font = Font(name='Calibri', size=10)
 
         wb.save(output_file)
 
